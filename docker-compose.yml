@@ -6,8 +6,24 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Persists the mitmproxy CA cert across restarts
       - mitmproxy-data:/root/.mitmproxy
+
+  # Serves the CA cert at http://<your-ip>:8888/mitmproxy-ca-cert.pem
+  # Open that URL on any device, download and install the cert, done.
+  cert-server:
+    image: python:3.12-alpine
+    container_name: yt-ad-filter-cert
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      - mitmproxy-data:/certs:ro
+    # Wait for mitmproxy to generate the cert, then serve the directory
+    command: >-
+      sh -c "while [ ! -f /certs/mitmproxy-ca-cert.pem ]; do sleep 2; done;
+             cd /certs && python -m http.server 8888"
+    depends_on:
+      - yt-ad-filter
 
 volumes:
   mitmproxy-data:
