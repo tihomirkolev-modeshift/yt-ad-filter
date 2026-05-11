@@ -70,6 +70,5 @@ docker compose logs -f
 | File | Purpose |
 |------|---------|
 | `addon.py` | mitmproxy addon — blocks ad domains/URLs, strips ad JSON keys |
-| `Dockerfile` | Container image (supports `MITM_MODE=regular` or `transparent`) |
-| `docker-compose.yml` | Single container — proxy on :8080 + cert server on :8888 |
-| `start.sh` | Entrypoint — starts mitmproxy then cert HTTP server in same container |
+| `Dockerfile` | Container image — proxy on :8080 + cert server on :8888 |
+| `docker-compose.yml` | Single container with port mappings |
