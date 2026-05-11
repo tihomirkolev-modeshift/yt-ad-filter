@@ -31,7 +31,7 @@ docker compose up -d --build
 
 ### 2. Install CA cert (once per device)
 
-Download from: `http://<proxy-ip>:8888/mitmproxy-ca-cert.pem`
+Download from: `http://192.168.10.99:8888/mitmproxy-ca-cert.pem`
 
 | Device | How |
 |--------|-----|
@@ -42,7 +42,7 @@ Download from: `http://<proxy-ip>:8888/mitmproxy-ca-cert.pem`
 
 ### 3. Set proxy on each device
 
-- **Host:** `<proxy-ip>`
+- **Host:** `192.168.10.99`
 - **Port:** `8080`
 
 ---
@@ -54,17 +54,14 @@ MikroTik automatically routes all LAN traffic through the proxy. Devices do **no
 ### Architecture
 
 ```
-LAN devices  →  MikroTik (policy route, no NAT)  →  Linux proxy machine
+LAN devices  →  MikroTik (policy route, no NAT)  →  192.168.10.99 (Linux proxy)
                                                          ↓  iptables TPROXY
                                                        mitmproxy:8080
                                                          ↓
                                                        YouTube
 ```
 
-Key: MikroTik uses **policy routing** (not dst-nat) so the original destination IP is preserved.
-Linux TPROXY delivers packets to mitmproxy with the original destination intact.
-
-### Step 1 — Start the container (transparent mode is the default)
+### Step 1 — Clone and start the container on 192.168.10.99
 
 ```bash
 git clone https://github.com/tihomirkolev-modeshift/yt-ad-filter.git
@@ -72,16 +69,14 @@ cd yt-ad-filter
 docker compose up -d --build
 ```
 
-### Step 2 — iptables on the Linux proxy machine
-
-Run these once on the Linux host (add to `/etc/rc.local` or a systemd unit for persistence):
+### Step 2 — iptables on 192.168.10.99
 
 ```bash
 # Enable IP forwarding
 sudo sysctl -w net.ipv4.ip_forward=1
 echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf
 
-# TPROXY: intercept port 443 and 80, deliver to mitmproxy on port 8080
+# TPROXY: redirect port 80 and 443 to mitmproxy on port 8080
 sudo iptables -t mangle -A PREROUTING -p tcp --dport 443 -j TPROXY \
     --tproxy-mark 0x1/0x1 --on-port 8080
 sudo iptables -t mangle -A PREROUTING -p tcp --dport 80  -j TPROXY \
@@ -92,42 +87,53 @@ sudo ip rule add fwmark 1 lookup 100
 sudo ip route add local 0.0.0.0/0 dev lo table 100
 ```
 
-> To persist `ip rule` / `ip route` across reboots, add them to `/etc/network/interfaces` or a systemd-networkd `.network` file.
+To persist across reboots, save iptables rules:
+```bash
+sudo apt install iptables-persistent
+sudo netfilter-persistent save
+```
+
+And add to `/etc/rc.local` before `exit 0`:
+```bash
+ip rule add fwmark 1 lookup 100
+ip route add local 0.0.0.0/0 dev lo table 100
+```
 
 ### Step 3 — MikroTik rules
 
-Open MikroTik terminal (Winbox → Terminal or SSH). Replace the placeholders:
-
-| Placeholder | Example |
-|-------------|---------|
-| `<LAN_IFACE>` | `bridge` or `ether2` |
-| `<LAN_SUBNET>` | `192.168.88.0/24` |
-| `<PROXY_IP>` | `192.168.88.2` |
+Open Winbox → Terminal (or SSH into 192.168.10.1) and paste:
 
 ```routeros
-# Mark HTTP and HTTPS from LAN for special routing (no NAT — preserves original destination)
+# Skip the proxy machine itself to prevent routing loop
 /ip firewall mangle
-add chain=prerouting in-interface=<LAN_IFACE> protocol=tcp dst-port=443 \
-    src-address=<LAN_SUBNET> action=mark-routing \
-    new-routing-mark=to-proxy passthrough=no comment="Route HTTPS to proxy"
+add chain=prerouting src-address=192.168.10.99 action=accept \
+    comment="Skip proxy machine - no redirect loop" passthrough=yes
 
-add chain=prerouting in-interface=<LAN_IFACE> protocol=tcp dst-port=80 \
-    src-address=<LAN_SUBNET> action=mark-routing \
-    new-routing-mark=to-proxy passthrough=no comment="Route HTTP to proxy"
+add chain=prerouting in-interface=bridge-net protocol=tcp dst-port=443 \
+    src-address=192.168.10.0/24 action=mark-routing \
+    new-routing-mark=to-proxy passthrough=no \
+    comment="Route HTTPS to yt-ad-filter proxy"
 
-# Route marked packets to the proxy machine (no NAT)
+add chain=prerouting in-interface=bridge-net protocol=tcp dst-port=80 \
+    src-address=192.168.10.0/24 action=mark-routing \
+    new-routing-mark=to-proxy passthrough=no \
+    comment="Route HTTP to yt-ad-filter proxy"
+
+# Route marked packets to the proxy machine
 /ip route
-add dst-address=0.0.0.0/0 routing-mark=to-proxy gateway=<PROXY_IP> comment="Proxy route"
+add dst-address=0.0.0.0/0 routing-mark=to-proxy \
+    gateway=192.168.10.99 comment="yt-ad-filter proxy route"
 
-# Block QUIC (UDP 443) — forces browsers to use TCP so the proxy can intercept
+# Block QUIC (UDP 443) - forces browsers to use TCP so proxy can intercept
 /ip firewall filter
-add chain=forward in-interface=<LAN_IFACE> protocol=udp dst-port=443 \
-    action=drop comment="Block QUIC/HTTP3"
+add chain=forward in-interface=bridge-net protocol=udp dst-port=443 \
+    action=drop comment="Block QUIC/HTTP3 - force TCP for proxy" \
+    place-before=[find comment="Drop all forward"]
 ```
 
 ### Step 4 — Install CA cert on each device
 
-Download from: `http://<proxy-ip>:8888/mitmproxy-ca-cert.pem`
+Download from: `http://192.168.10.99:8888/mitmproxy-ca-cert.pem`
 
 Same installation steps as Option A above.
 
@@ -145,4 +151,5 @@ docker compose logs -f
 |------|---------|
 | `addon.py` | mitmproxy addon — blocks ad domains/URLs, strips ad JSON keys |
 | `Dockerfile` | Container image (supports `MITM_MODE=regular` or `transparent`) |
-| `docker-compose.yml` | Service definition — transparent mode + cert server on port 8888 |
+| `docker-compose.yml` | Single container — proxy on :8080 + cert server on :8888 |
+| `start.sh` | Entrypoint — starts mitmproxy then cert HTTP server in same container |
