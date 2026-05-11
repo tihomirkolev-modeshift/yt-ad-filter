@@ -1,0 +1,13 @@
+services:
+  yt-ad-filter:
+    build: .
+    container_name: yt-ad-filter
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persists the mitmproxy CA cert across restarts
+      - mitmproxy-data:/root/.mitmproxy
+
+volumes:
+  mitmproxy-data:
