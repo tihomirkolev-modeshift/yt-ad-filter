@@ -10,7 +10,11 @@ VOLUME ["/root/.mitmproxy"]
 
 EXPOSE 8080
 
-# --set block_global=false allows traffic from non-localhost clients (other devices on the LAN)
-CMD ["mitmdump", "--listen-host", "0.0.0.0", "--listen-port", "8080", \
-     "--set", "block_global=false", \
-     "-s", "/app/addon.py"]
+# MITM_MODE=regular  → explicit proxy (set proxy on each device manually)
+# MITM_MODE=transparent → transparent mode (MikroTik/router redirects traffic)
+ENV MITM_MODE=regular
+
+CMD mitmdump --listen-host 0.0.0.0 --listen-port 8080 \
+    --mode ${MITM_MODE} \
+    --set block_global=false \
+    -s /app/addon.py
