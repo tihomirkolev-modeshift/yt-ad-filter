@@ -1,65 +1,17 @@
 # yt-ad-filter
 
-A YouTube ad-blocker running as a [mitmproxy](https://mitmproxy.org/) transparent HTTPS proxy in Docker.
-
-Works on any device on your network — phones, smart TVs, browsers — with no browser extension required.
+YouTube ad-blocker — mitmproxy transparent HTTPS proxy in Docker, routed via MikroTik.
 
 ## How it works
 
-1. All HTTPS traffic routes through the proxy on port 8080
-2. The proxy strips ad scheduling data from YouTube's player API responses and HTML pages
-3. Ad tracking/analytics URLs are blocked with `204 No Content`
+- MikroTik routes all LAN TCP 80/443 traffic to the proxy (no per-device config needed)
+- Proxy strips ad keys from YouTube's player API and HTML pages
+- Ad tracking/analytics URLs are blocked with `204 No Content`
+- Each device needs the CA cert installed once
 
 ---
 
-## Option A — Manual per-device proxy (simple)
-
-Run the container, set proxy settings on each device manually.
-
-### 1. Start (explicit proxy mode)
-
-Edit `docker-compose.yml` and change:
-- `MITM_MODE=transparent` → `MITM_MODE=regular`
-- `network_mode: host` → remove it and add `ports: ["8080:8080"]`
-
-Then:
-```bash
-git clone https://github.com/tihomirkolev-modeshift/yt-ad-filter.git
-cd yt-ad-filter
-docker compose up -d --build
-```
-
-### 2. Install CA cert (once per device)
-
-Download from: `http://192.168.10.99:8888/mitmproxy-ca-cert.pem`
-
-| Device | How |
-|--------|-----|
-| **Linux** | `sudo cp mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates` |
-| **Windows** | Double-click the `.pem` → install to **Trusted Root Certification Authorities** (Local Machine) |
-| **Android** | Settings → Security → Install certificate → CA certificate |
-| **iOS/macOS** | Open URL in Safari → Settings → General → VPN & Device Management → trust it |
-
-### 3. Set proxy on each device
-
-- **Host:** `192.168.10.99`
-- **Port:** `8080`
-
----
-
-## Option B — MikroTik transparent redirect (automatic, all devices)
-
-MikroTik automatically routes all LAN traffic through the proxy. Devices do **not** need to configure a proxy manually — but still need the CA cert installed (one-time).
-
-### Architecture
-
-```
-LAN devices  →  MikroTik (policy route, no NAT)  →  192.168.10.99 (Linux proxy)
-                                                         ↓  iptables TPROXY
-                                                       mitmproxy:8080
-                                                         ↓
-                                                       YouTube
-```
+## Setup
 
 ### Step 1 — Clone and start the container on 192.168.10.99
 
@@ -135,7 +87,12 @@ add chain=forward in-interface=bridge-net protocol=udp dst-port=443 \
 
 Download from: `http://192.168.10.99:8888/mitmproxy-ca-cert.pem`
 
-Same installation steps as Option A above.
+| Device | How |
+|--------|-----|
+| **Linux** | `sudo cp mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates` |
+| **Windows** | Double-click → install to **Trusted Root Certification Authorities** (Local Machine) |
+| **Android** | Settings → Security → Install certificate → CA certificate |
+| **iOS/macOS** | Open URL in Safari → Settings → General → VPN & Device Management → trust it |
 
 ---
 
