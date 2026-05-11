@@ -61,7 +61,10 @@ Download from: `http://192.168.10.99:8888/mitmproxy-ca-cert.pem`
 
 ## Logs
 
+Debug logging is off by default. To enable, uncomment `DEBUG=1` in `docker-compose.yml` then restart:
+
 ```bash
+docker compose up -d
 docker compose logs -f
 ```
 

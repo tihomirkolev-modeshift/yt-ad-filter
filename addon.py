@@ -3,15 +3,18 @@ import re
 import json
 import logging
 import sys
+import os
 
-# Log to stdout (Docker captures it) + optional file
 log = logging.getLogger("yt-ad-filter")
-log.setLevel(logging.DEBUG)
 
-_sh = logging.StreamHandler(sys.stdout)
-_sh.setLevel(logging.DEBUG)
-_sh.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
-log.addHandler(_sh)
+if os.environ.get("DEBUG", "").lower() in ("1", "true", "yes"):
+    log.setLevel(logging.DEBUG)
+    _sh = logging.StreamHandler(sys.stdout)
+    _sh.setLevel(logging.DEBUG)
+    _sh.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+    log.addHandler(_sh)
+else:
+    log.addHandler(logging.NullHandler())
 
 AD_DOMAINS = [
     'doubleclick.net',

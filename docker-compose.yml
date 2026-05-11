@@ -8,6 +8,7 @@ services:
       - "8888:8888"   # CA cert download
     environment:
       - MITM_MODE=transparent
+      # - DEBUG=1        # uncomment to enable verbose logging (docker compose logs -f)
     volumes:
       - mitmproxy-data:/root/.mitmproxy
 
