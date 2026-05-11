@@ -4,17 +4,17 @@ RUN pip install --no-cache-dir mitmproxy
 
 WORKDIR /app
 COPY addon.py .
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
 # mitmproxy stores generated CA cert here
 VOLUME ["/root/.mitmproxy"]
 
-EXPOSE 8080
+# 8080 = proxy, 8888 = CA cert download
+EXPOSE 8080 8888
 
-# MITM_MODE=regular  → explicit proxy (set proxy on each device manually)
-# MITM_MODE=transparent → transparent mode (MikroTik/router redirects traffic)
+# MITM_MODE=regular      -> explicit proxy (set proxy on each device manually)
+# MITM_MODE=transparent  -> transparent mode (MikroTik/router redirects traffic)
 ENV MITM_MODE=regular
 
-CMD mitmdump --listen-host 0.0.0.0 --listen-port 8080 \
-    --mode ${MITM_MODE} \
-    --set block_global=false \
-    -s /app/addon.py
+CMD ["/start.sh"]
