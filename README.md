@@ -21,37 +21,9 @@ cd yt-ad-filter
 docker compose up -d --build
 ```
 
-### Step 2 — iptables on 192.168.10.99
+The container automatically sets up iptables TPROXY rules and IP forwarding on startup. No manual network configuration needed on the Linux host.
 
-```bash
-# Enable IP forwarding
-sudo sysctl -w net.ipv4.ip_forward=1
-echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf
-
-# TPROXY: redirect port 80 and 443 to mitmproxy on port 8080
-sudo iptables -t mangle -A PREROUTING -p tcp --dport 443 -j TPROXY \
-    --tproxy-mark 0x1/0x1 --on-port 8080
-sudo iptables -t mangle -A PREROUTING -p tcp --dport 80  -j TPROXY \
-    --tproxy-mark 0x1/0x1 --on-port 8080
-
-# Policy routing: deliver TPROXY-marked packets locally
-sudo ip rule add fwmark 1 lookup 100
-sudo ip route add local 0.0.0.0/0 dev lo table 100
-```
-
-To persist across reboots, save iptables rules:
-```bash
-sudo apt install iptables-persistent
-sudo netfilter-persistent save
-```
-
-And add to `/etc/rc.local` before `exit 0`:
-```bash
-ip rule add fwmark 1 lookup 100
-ip route add local 0.0.0.0/0 dev lo table 100
-```
-
-### Step 3 — MikroTik rules
+### Step 2 — MikroTik rules
 
 Open Winbox → Terminal (or SSH into 192.168.10.1) and paste:
 
@@ -83,7 +55,7 @@ add chain=forward in-interface=bridge-net protocol=udp dst-port=443 \
     place-before=[find comment="Drop all forward"]
 ```
 
-### Step 4 — Install CA cert on each device
+### Step 3 — Install CA cert on each device
 
 Download from: `http://192.168.10.99:8888/mitmproxy-ca-cert.pem`
 
