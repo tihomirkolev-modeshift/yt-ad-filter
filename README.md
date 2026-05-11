@@ -4,7 +4,7 @@ YouTube ad-blocker — mitmproxy transparent HTTPS proxy in Docker, routed via M
 
 ## How it works
 
-- MikroTik routes all LAN TCP 80/443 traffic to the proxy (no per-device config needed)
+- MikroTik port-forwards LAN TCP 80/443 directly to the container on port 8080 (no per-device config needed)
 - Proxy strips ad keys from YouTube's player API and HTML pages
 - Ad tracking/analytics URLs are blocked with `204 No Content`
 - Each device needs the CA cert installed once
@@ -21,39 +21,30 @@ cd yt-ad-filter
 docker compose up -d --build
 ```
 
-The container automatically sets up iptables TPROXY rules and IP forwarding on startup. No manual network configuration needed on the Linux host.
-
 ### Step 2 — MikroTik rules
 
 Open Winbox → Terminal (or SSH into 192.168.10.1) and paste:
 
 ```routeros
-# Skip the proxy machine itself to prevent routing loop
-/ip firewall mangle
-add chain=prerouting src-address=192.168.10.99 action=accept \
-    comment="Skip proxy machine - no redirect loop" passthrough=yes
+# DST-NAT: forward all LAN HTTPS to the proxy container on port 8080
+/ip firewall nat
+add chain=dstnat in-interface=bridge-net protocol=tcp dst-port=443 \
+    src-address=!192.168.10.99 action=dst-nat \
+    to-addresses=192.168.10.99 to-ports=8080 \
+    comment="Redirect HTTPS to yt-ad-filter"
 
-add chain=prerouting in-interface=bridge-net protocol=tcp dst-port=443 \
-    src-address=192.168.10.0/24 action=mark-routing \
-    new-routing-mark=to-proxy passthrough=no \
-    comment="Route HTTPS to yt-ad-filter proxy"
-
-add chain=prerouting in-interface=bridge-net protocol=tcp dst-port=80 \
-    src-address=192.168.10.0/24 action=mark-routing \
-    new-routing-mark=to-proxy passthrough=no \
-    comment="Route HTTP to yt-ad-filter proxy"
-
-# Route marked packets to the proxy machine
-/ip route
-add dst-address=0.0.0.0/0 routing-mark=to-proxy \
-    gateway=192.168.10.99 comment="yt-ad-filter proxy route"
+add chain=dstnat in-interface=bridge-net protocol=tcp dst-port=80 \
+    src-address=!192.168.10.99 action=dst-nat \
+    to-addresses=192.168.10.99 to-ports=8080 \
+    comment="Redirect HTTP to yt-ad-filter"
 
 # Block QUIC (UDP 443) - forces browsers to use TCP so proxy can intercept
 /ip firewall filter
 add chain=forward in-interface=bridge-net protocol=udp dst-port=443 \
-    action=drop comment="Block QUIC/HTTP3 - force TCP for proxy" \
-    place-before=[find comment="Drop all forward"]
+    action=drop comment="Block QUIC/HTTP3 - force TCP for proxy"
 ```
+
+> **How it works**: MikroTik port-forwards 80/443 to the container on port 8080. mitmproxy reads the TLS SNI (HTTPS) or Host header (HTTP) to know where to connect upstream — no iptables needed on the Linux host.
 
 ### Step 3 — Install CA cert on each device
 

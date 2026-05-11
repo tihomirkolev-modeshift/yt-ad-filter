@@ -3,11 +3,11 @@ services:
     build: .
     container_name: yt-ad-filter
     restart: unless-stopped
-    network_mode: host          # required for transparent/TPROXY mode; also exposes 8080+8888 on host
-    cap_add:
-      - NET_ADMIN               # required for IP_TRANSPARENT socket option
+    ports:
+      - "8080:8080"   # proxy
+      - "8888:8888"   # CA cert download
     environment:
-      - MITM_MODE=transparent   # change to 'regular' for explicit proxy mode
+      - MITM_MODE=transparent
     volumes:
       - mitmproxy-data:/root/.mitmproxy
 
